@@ -1,0 +1,806 @@
+-- Painel Completo - Ride A Pet (v8 - Noclip no pet)
+-- Instância: TKI
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ====== CONFIGURAÇÕES ======
+local maxDistance = 15000
+local ocultarComuns = true
+local ocultarAbaixoDe = 100000
+local ordenarPorValor = false
+local toggleKey = Enum.KeyCode.Y
+
+-- ====== ESTADO ======
+local espEnabled = true
+local infJumpEnabled = false
+local flyEnabled = false
+local noclipEnabled = false
+local velocidade = 16
+local forcaPulo = 50
+local gravidade = 196.2
+local posicaoSalva = nil
+local abaAtual = "ovos"
+local minimizado = false
+
+-- ============================================
+-- TABELA DE VALORES
+-- ============================================
+local EggLuckMap = {
+    -- Common
+    ["White Egg"] = 1,
+    ["Brown Egg"] = 5,
+    
+    -- Rare
+    ["Cracked Egg"] = 30,
+    ["Easter Egg"] = 50,
+    ["Stone Egg"] = 100,
+    ["Leaf Egg"] = 200,
+    
+    -- Epic
+    ["Mushroom Egg"] = 500,
+    ["Flower Egg"] = 750,
+    ["Slime Egg"] = 1000,
+    ["Ice Egg"] = 3000,
+    
+    -- Legendary
+    ["Glass Egg"] = 10000,
+    ["Golden Egg"] = 30000,
+    
+    -- Mythic
+    ["Crystal Egg"] = 150000,
+    ["Skull Egg"] = 250000,
+    ["Dominus Egg"] = 700000,
+    ["Flaming Egg"] = 1000000,
+    ["Sinister Egg"] = 3000000,
+    ["Soul Egg"] = 7000000,
+    ["Tidal Egg"] = 7000000,
+    ["Bloom Egg"] = 2000000000,
+    
+    -- Divine
+    ["Aurora Egg"] = 300000000,
+    ["Galaxy Egg"] = 1500000000,
+    ["Solaris Egg"] = 500000000000,
+    
+    -- Ethereal
+    ["Blackhole Egg"] = 100000000000,
+    ["Cherub Egg"] = 1000000000000,
+}
+
+local function getEggValue(nome)
+    return EggLuckMap[nome] or 999999999
+end
+
+local function formatLuck(n)
+    if n >= 1e12 then return string.format("%.1fT", n/1e12) end
+    if n >= 1e9 then return string.format("%.1fB", n/1e9) end
+    if n >= 1e6 then return string.format("%.1fM", n/1e6) end
+    if n >= 1e3 then return string.format("%.1fK", n/1e3) end
+    return tostring(n)
+end
+
+local function getEggRarity(name)
+    local val = getEggValue(name)
+    if val >= 1e12 then return Color3.fromRGB(255, 0, 255)
+    elseif val >= 1e9 then return Color3.fromRGB(255, 50, 50)
+    elseif val >= 1e6 then return Color3.fromRGB(255, 200, 0)
+    elseif val >= 1e3 then return Color3.fromRGB(180, 0, 255)
+    elseif val >= 500 then return Color3.fromRGB(0, 150, 255)
+    elseif val >= 30 then return Color3.fromRGB(0, 255, 0)
+    end
+    return Color3.fromRGB(180, 180, 180)
+end
+
+-- ============================================
+-- INTERFACE
+-- ============================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TKI_Panel"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+local Painel = Instance.new("Frame")
+Painel.Size = UDim2.new(0, 380, 0, 480)
+Painel.Position = UDim2.new(0.7, 0, 0.5, -240)
+Painel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+Painel.BorderSizePixel = 0
+Painel.Active = true
+Painel.Draggable = true
+Painel.Parent = ScreenGui
+
+local PainelCorner = Instance.new("UICorner")
+PainelCorner.CornerRadius = UDim.new(0, 10)
+PainelCorner.Parent = Painel
+
+local Titulo = Instance.new("TextLabel")
+Titulo.Size = UDim2.new(1, 0, 0, 34)
+Titulo.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+Titulo.BorderSizePixel = 0
+Titulo.Text = "🛠 TKI Menu"
+Titulo.TextColor3 = Color3.fromRGB(200, 180, 255)
+Titulo.Font = Enum.Font.GothamBold
+Titulo.TextSize = 15
+Titulo.Parent = Painel
+
+local TituloCorner = Instance.new("UICorner")
+TituloCorner.CornerRadius = UDim.new(0, 10)
+TituloCorner.Parent = Titulo
+
+local BtnMin = Instance.new("TextButton")
+BtnMin.Size = UDim2.new(0, 28, 0, 24)
+BtnMin.Position = UDim2.new(1, -32, 0, 5)
+BtnMin.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+BtnMin.Text = "−"
+BtnMin.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnMin.Font = Enum.Font.GothamBold
+BtnMin.TextSize = 16
+BtnMin.Parent = Titulo
+
+local BtnMinCorner = Instance.new("UICorner")
+BtnMinCorner.CornerRadius = UDim.new(0, 4)
+BtnMinCorner.Parent = BtnMin
+
+local TabsFrame = Instance.new("Frame")
+TabsFrame.Size = UDim2.new(1, -8, 0, 28)
+TabsFrame.Position = UDim2.new(0, 4, 0, 38)
+TabsFrame.BackgroundTransparency = 1
+TabsFrame.Parent = Painel
+
+local function criarAba(nome, posX)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0.25, -3, 1, 0)
+    b.Position = UDim2.new(posX, 0, 0, 0)
+    b.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+    b.Text = nome
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 11
+    b.Parent = TabsFrame
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 4); c.Parent = b
+    return b
+end
+
+local AbaOvos = criarAba("🥚 Ovos", 0)
+local AbaJogadores = criarAba("👥 Players", 0.25)
+local AbaFuncoes = criarAba("⚙ Func", 0.5)
+local AbaESP = criarAba("👁 ESP", 0.75)
+
+local function criarScroll()
+    local s = Instance.new("ScrollingFrame")
+    s.Size = UDim2.new(1, -8, 1, -140)
+    s.Position = UDim2.new(0, 4, 0, 70)
+    s.BackgroundTransparency = 1
+    s.BorderSizePixel = 0
+    s.ScrollBarThickness = 6
+    s.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 110)
+    s.CanvasSize = UDim2.new(0, 0, 0, 0)
+    s.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    s.ScrollingDirection = Enum.ScrollingDirection.Y
+    s.Parent = Painel
+    local l = Instance.new("UIListLayout")
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Padding = UDim.new(0, 4)
+    l.Parent = s
+    return s
+end
+
+local ScrollOvos = criarScroll()
+local ScrollJog = criarScroll(); ScrollJog.Visible = false
+local ScrollFunc = criarScroll(); ScrollFunc.Visible = false
+local ScrollESP = criarScroll(); ScrollESP.Visible = false
+
+local BtnVoltar = Instance.new("TextButton")
+BtnVoltar.Size = UDim2.new(0.5, -6, 0, 30)
+BtnVoltar.Position = UDim2.new(0, 4, 1, -68)
+BtnVoltar.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+BtnVoltar.Text = "↩ Voltar"
+BtnVoltar.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnVoltar.Font = Enum.Font.GothamBold
+BtnVoltar.TextSize = 12
+BtnVoltar.Parent = Painel
+local BtnVoltarC = Instance.new("UICorner"); BtnVoltarC.CornerRadius = UDim.new(0, 5); BtnVoltarC.Parent = BtnVoltar
+
+local BtnSalvar = Instance.new("TextButton")
+BtnSalvar.Size = UDim2.new(0.5, -6, 0, 30)
+BtnSalvar.Position = UDim2.new(0.5, 2, 1, -68)
+BtnSalvar.BackgroundColor3 = Color3.fromRGB(60, 90, 60)
+BtnSalvar.Text = "📍 Salvar Local"
+BtnSalvar.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnSalvar.Font = Enum.Font.GothamBold
+BtnSalvar.TextSize = 12
+BtnSalvar.Parent = Painel
+local BtnSalvarC = Instance.new("UICorner"); BtnSalvarC.CornerRadius = UDim.new(0, 5); BtnSalvarC.Parent = BtnSalvar
+
+local BtnAtualizar = Instance.new("TextButton")
+BtnAtualizar.Size = UDim2.new(1, -8, 0, 26)
+BtnAtualizar.Position = UDim2.new(0, 4, 1, -34)
+BtnAtualizar.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+BtnAtualizar.Text = "🔄 Atualizar Lista"
+BtnAtualizar.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnAtualizar.Font = Enum.Font.Gotham
+BtnAtualizar.TextSize = 12
+BtnAtualizar.Parent = Painel
+local BtnAtualizarC = Instance.new("UICorner"); BtnAtualizarC.CornerRadius = UDim.new(0, 5); BtnAtualizarC.Parent = BtnAtualizar
+
+-- ============================================
+-- COMPONENTES UI
+-- ============================================
+local function criarToggle(parent, icone, texto, padrao, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -4, 0, 40)
+    row.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+    row.BorderSizePixel = 0
+    row.Parent = parent
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = row
+    
+    local ic = Instance.new("TextLabel")
+    ic.Size = UDim2.new(0, 30, 1, 0); ic.Position = UDim2.new(0, 8, 0, 0)
+    ic.BackgroundTransparency = 1; ic.Text = icone
+    ic.TextColor3 = Color3.fromRGB(170, 120, 255)
+    ic.Font = Enum.Font.GothamBold; ic.TextSize = 18; ic.Parent = row
+    
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -120, 1, 0); lbl.Position = UDim2.new(0, 40, 0, 0)
+    lbl.BackgroundTransparency = 1; lbl.Text = texto
+    lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+    
+    local estado = padrao
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 44, 0, 22); btn.Position = UDim2.new(1, -54, 0.5, -11)
+    btn.BackgroundColor3 = estado and Color3.fromRGB(120, 80, 200) or Color3.fromRGB(50, 50, 65)
+    btn.Text = ""; btn.Parent = row
+    local bcc = Instance.new("UICorner"); bcc.CornerRadius = UDim.new(1, 0); bcc.Parent = btn
+    
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 16, 0, 16)
+    dot.Position = estado and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.Parent = btn
+    local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(1, 0); dc.Parent = dot
+    
+    btn.MouseButton1Click:Connect(function()
+        estado = not estado
+        if estado then
+            btn.BackgroundColor3 = Color3.fromRGB(120, 80, 200)
+            dot.Position = UDim2.new(1, -18, 0.5, -8)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+            dot.Position = UDim2.new(0, 2, 0.5, -8)
+        end
+        callback(estado)
+    end)
+end
+
+local function criarSlider(parent, icone, texto, min, max, padrao, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -4, 0, 60)
+    row.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+    row.BorderSizePixel = 0
+    row.Parent = parent
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = row
+    
+    local ic = Instance.new("TextLabel")
+    ic.Size = UDim2.new(0, 30, 0, 30); ic.Position = UDim2.new(0, 8, 0, 4)
+    ic.BackgroundTransparency = 1; ic.Text = icone
+    ic.TextColor3 = Color3.fromRGB(170, 120, 255)
+    ic.Font = Enum.Font.GothamBold; ic.TextSize = 18; ic.Parent = row
+    
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -120, 0, 30); lbl.Position = UDim2.new(0, 40, 0, 4)
+    lbl.BackgroundTransparency = 1; lbl.Text = texto .. ": " .. padrao
+    lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+    
+    local barra = Instance.new("Frame")
+    barra.Size = UDim2.new(1, -60, 0, 6); barra.Position = UDim2.new(0, 40, 0, 44)
+    barra.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    barra.BorderSizePixel = 0; barra.Parent = row
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(1, 0); bc.Parent = barra
+    
+    local preench = Instance.new("Frame")
+    preench.Size = UDim2.new((padrao - min) / (max - min), 0, 1, 0)
+    preench.BackgroundColor3 = Color3.fromRGB(120, 80, 200)
+    preench.BorderSizePixel = 0; preench.Parent = barra
+    local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(1, 0); pc.Parent = preench
+    
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1
+    btn.Text = ""; btn.Parent = barra
+    
+    local arrastando = false
+    local function atualizar(x)
+        local rel = math.clamp((x - barra.AbsolutePosition.X) / barra.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * rel)
+        preench.Size = UDim2.new(rel, 0, 1, 0)
+        lbl.Text = texto .. ": " .. val
+        callback(val)
+    end
+    
+    btn.MouseButton1Down:Connect(function()
+        arrastando = true
+        atualizar(UserInputService:GetMouseLocation().X)
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if arrastando and input.UserInputType == Enum.UserInputType.MouseMovement then
+            atualizar(input.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            arrastando = false
+        end
+    end)
+end
+
+-- ============================================
+-- ABA FUNÇÕES
+-- ============================================
+criarToggle(ScrollFunc, "⭕", "Pulo Infinito", false, function(v)
+    infJumpEnabled = v
+end)
+
+criarToggle(ScrollFunc, "✈", "Voar", false, function(v)
+    flyEnabled = v
+    if not v then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local f = hrp:FindFirstChild("TKI_Fly")
+            if f then f:Destroy() end
+        end
+    end
+end)
+
+-- NOCLIP (agora funciona também montado no pet)
+criarToggle(ScrollFunc, "🚪", "Noclip (Atravessar Paredes)", false, function(v)
+    noclipEnabled = v
+    if not v then
+        -- Restaura colisões do personagem
+        local char = LocalPlayer.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+            -- Restaura colisões do pet (se estiver montado)
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.SeatPart then
+                local pet = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
+                if pet and pet ~= char then
+                    for _, part in ipairs(pet:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+criarSlider(ScrollFunc, "⚡", "Velocidade", 0, 500, 16, function(v)
+    velocidade = v
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = v end
+end)
+
+criarSlider(ScrollFunc, "🦘", "Pulo", 0, 500, 50, function(v)
+    forcaPulo = v
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.UseJumpPower = true
+        hum.JumpPower = v
+    end
+end)
+
+criarSlider(ScrollFunc, "🌌", "Gravidade", 0, 500, 196, function(v)
+    gravidade = v
+    workspace.Gravity = v
+end)
+
+-- ============================================
+-- ABA ESP
+-- ============================================
+criarToggle(ScrollESP, "👁", "ESP de Ovos", true, function(v)
+    espEnabled = v
+    if not v then
+        local renderedEggs = workspace:FindFirstChild("RenderedEggs")
+        if renderedEggs then
+            for _, egg in ipairs(renderedEggs:GetChildren()) do
+                local h = egg:FindFirstChild("Handle")
+                if h then
+                    local bb = h:FindFirstChild("TKI_EggESP")
+                    if bb then bb:Destroy() end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================
+-- ESP DE OVOS
+-- ============================================
+local function createEggESP(egg)
+    local handle = egg:FindFirstChild("Handle")
+    if not handle then return end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "TKI_EggESP"
+    billboard.Size = UDim2.new(0, 220, 0, 20)
+    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Adornee = handle
+    billboard.Parent = handle
+    
+    local info = Instance.new("TextLabel")
+    info.Name = "Info"
+    info.Size = UDim2.new(1, 0, 1, 0)
+    info.BackgroundTransparency = 1
+    info.TextColor3 = Color3.fromRGB(255, 255, 255)
+    info.TextStrokeTransparency = 0.2
+    info.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    info.Font = Enum.Font.GothamBold
+    info.TextSize = 13
+    info.Text = ""
+    info.Parent = billboard
+end
+
+local function updateEggESP()
+    if not espEnabled then return end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local renderedEggs = workspace:FindFirstChild("RenderedEggs")
+    if not renderedEggs then return end
+    
+    for _, egg in ipairs(renderedEggs:GetChildren()) do
+        if egg:IsA("Model") then
+            local handle = egg:FindFirstChild("Handle")
+            if handle then
+                local eggVal = getEggValue(egg.Name)
+                local mostrar = true
+                if ocultarComuns and eggVal < ocultarAbaixoDe then 
+                    mostrar = false 
+                end
+                
+                if mostrar then
+                    local bb = handle:FindFirstChild("TKI_EggESP")
+                    if not bb then
+                        createEggESP(egg)
+                        bb = handle:FindFirstChild("TKI_EggESP")
+                    end
+                    if bb then
+                        local dist = (root.Position - handle.Position).Magnitude
+                        if dist <= maxDistance then
+                            bb.Enabled = true
+                            local info = bb:FindFirstChild("Info")
+                            if info then
+                                info.Text = string.format("%s  •  %s  •  %dm", egg.Name, formatLuck(eggVal), math.floor(dist))
+                                info.TextColor3 = getEggRarity(egg.Name)
+                            end
+                        else
+                            bb.Enabled = false
+                        end
+                    end
+                else
+                    local bb = handle:FindFirstChild("TKI_EggESP")
+                    if bb then bb:Destroy() end
+                end
+            end
+        end
+    end
+end
+
+-- ============================================
+-- TELEPORTE
+-- ============================================
+local function getEggPosition(egg)
+    local base = egg:FindFirstChild("EggBase", true)
+    if base and base:IsA("BasePart") then return base.Position end
+    local sphere = egg:FindFirstChildWhichIsA("MeshPart", true)
+    if sphere then return sphere.Position end
+    local handle = egg:FindFirstChild("Handle")
+    if handle then return handle.Position end
+    if egg.PrimaryPart then return egg.PrimaryPart.Position end
+    return nil
+end
+
+local function teleportTo(position, salvar)
+    if not position then return end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    if salvar then 
+        posicaoSalva = root.CFrame
+    end
+    
+    root.CFrame = CFrame.new(position + Vector3.new(0, 5, 0))
+    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+end
+
+BtnSalvar.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then
+        posicaoSalva = root.CFrame
+        BtnSalvar.Text = "✅ Salvo!"
+        task.wait(1)
+        BtnSalvar.Text = "📍 Salvar Local"
+    end
+end)
+
+BtnVoltar.MouseButton1Click:Connect(function()
+    if posicaoSalva then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = posicaoSalva
+            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            BtnVoltar.Text = "✅ Voltou!"
+            task.wait(1)
+            BtnVoltar.Text = "↩ Voltar"
+        end
+    else
+        BtnVoltar.Text = "❌ Nada salvo"
+        task.wait(1)
+        BtnVoltar.Text = "↩ Voltar"
+    end
+end)
+
+-- ============================================
+-- LISTAS
+-- ============================================
+local function limparScroll(scroll)
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+end
+
+local function popularOvos()
+    limparScroll(ScrollOvos)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local renderedEggs = workspace:FindFirstChild("RenderedEggs")
+    if not renderedEggs then return end
+    
+    local ovos = {}
+    for _, egg in ipairs(renderedEggs:GetChildren()) do
+        if egg:IsA("Model") then
+            local pos = getEggPosition(egg)
+            if pos then
+                local val = getEggValue(egg.Name)
+                local dist = (root.Position - pos).Magnitude
+                local mostrar = true
+                if ocultarComuns and val < ocultarAbaixoDe then mostrar = false end
+                if dist > maxDistance then mostrar = false end
+                if mostrar then
+                    table.insert(ovos, {nome=egg.Name, valor=val, posicao=pos, distancia=dist, cor=getEggRarity(egg.Name)})
+                end
+            end
+        end
+    end
+    if ordenarPorValor then
+        table.sort(ovos, function(a,b) return a.valor > b.valor end)
+    else
+        table.sort(ovos, function(a,b) return a.distancia < b.distancia end)
+    end
+    
+    for _, ovo in ipairs(ovos) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -4, 0, 32)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        btn.Text = string.format("%s  •  %s  •  %dm", ovo.nome, formatLuck(ovo.valor), math.floor(ovo.distancia))
+        btn.TextColor3 = ovo.cor
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 11
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = ScrollOvos
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 4); c.Parent = btn
+        local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0, 8); p.Parent = btn
+        btn.MouseButton1Click:Connect(function()
+            teleportTo(ovo.posicao, true)
+        end)
+    end
+end
+
+local function popularJogadores()
+    limparScroll(ScrollJog)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    local lista = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local pchar = p.Character
+            if pchar then
+                local pr = pchar:FindFirstChild("HumanoidRootPart")
+                if pr then
+                    table.insert(lista, {nome=p.Name, posicao=pr.Position, distancia=(root.Position - pr.Position).Magnitude})
+                end
+            end
+        end
+    end
+    
+    table.sort(lista, function(a,b) return a.distancia < b.distancia end)
+    
+    for _, j in ipairs(lista) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -4, 0, 32)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        btn.Text = string.format("%s  •  %dm", j.nome, math.floor(j.distancia))
+        btn.TextColor3 = Color3.fromRGB(0, 220, 255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 11
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = ScrollJog
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 4); c.Parent = btn
+        local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0, 8); p.Parent = btn
+        btn.MouseButton1Click:Connect(function()
+            teleportTo(j.posicao, true)
+        end)
+    end
+end
+
+-- ============================================
+-- TROCA DE ABAS
+-- ============================================
+local function selecionarAba(aba)
+    abaAtual = aba
+    ScrollOvos.Visible = (aba == "ovos")
+    ScrollJog.Visible = (aba == "jogadores")
+    ScrollFunc.Visible = (aba == "funcoes")
+    ScrollESP.Visible = (aba == "esp")
+    AbaOvos.BackgroundColor3 = (aba == "ovos") and Color3.fromRGB(70,70,100) or Color3.fromRGB(35,35,48)
+    AbaJogadores.BackgroundColor3 = (aba == "jogadores") and Color3.fromRGB(70,70,100) or Color3.fromRGB(35,35,48)
+    AbaFuncoes.BackgroundColor3 = (aba == "funcoes") and Color3.fromRGB(70,70,100) or Color3.fromRGB(35,35,48)
+    AbaESP.BackgroundColor3 = (aba == "esp") and Color3.fromRGB(70,70,100) or Color3.fromRGB(35,35,48)
+    if aba == "ovos" then popularOvos() elseif aba == "jogadores" then popularJogadores() end
+end
+
+AbaOvos.MouseButton1Click:Connect(function() selecionarAba("ovos") end)
+AbaJogadores.MouseButton1Click:Connect(function() selecionarAba("jogadores") end)
+AbaFuncoes.MouseButton1Click:Connect(function() selecionarAba("funcoes") end)
+AbaESP.MouseButton1Click:Connect(function() selecionarAba("esp") end)
+
+BtnAtualizar.MouseButton1Click:Connect(function()
+    if abaAtual == "ovos" then popularOvos() elseif abaAtual == "jogadores" then popularJogadores() end
+end)
+
+-- ============================================
+-- INF JUMP
+-- ============================================
+UserInputService.JumpRequest:Connect(function()
+    if infJumpEnabled then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- ============================================
+-- FLY
+-- ============================================
+RunService.Heartbeat:Connect(function()
+    if flyEnabled then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local bg = hrp:FindFirstChild("TKI_Fly")
+            if not bg then
+                bg = Instance.new("BodyVelocity")
+                bg.Name = "TKI_Fly"
+                bg.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                bg.Parent = hrp
+            end
+            local dir = Vector3.new(0, 0, 0)
+            local cam = workspace.CurrentCamera.CFrame
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0, 1, 0) end
+            bg.Velocity = dir * velocidade
+        end
+    end
+end)
+
+-- ============================================
+-- NOCLIP (funciona a pé E montado no pet)
+-- ============================================
+RunService.Stepped:Connect(function()
+    if noclipEnabled then
+        local char = LocalPlayer.Character
+        if char then
+            -- Noclip do personagem
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+            
+            -- Noclip do pet (se estiver montado)
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.SeatPart then
+                local pet = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
+                if pet and pet ~= char then
+                    for _, part in ipairs(pet:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================
+-- APLICAR VELOCIDADE/PULO AO RESPAWN
+-- ============================================
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = velocidade
+        hum.UseJumpPower = true
+        hum.JumpPower = forcaPulo
+    end
+    if abaAtual == "jogadores" then popularJogadores() end
+end)
+
+-- ============================================
+-- LOOPS
+-- ============================================
+task.spawn(function()
+    while task.wait(0.5) do
+        updateEggESP()
+    end
+end)
+
+task.spawn(function()
+    while task.wait(3) do
+        if Painel.Visible and not minimizado then
+            if abaAtual == "ovos" then popularOvos()
+            elseif abaAtual == "jogadores" then popularJogadores() end
+        end
+    end
+end)
+
+-- ============================================
+-- TECLA Y
+-- ============================================
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == toggleKey then
+        Painel.Visible = not Painel.Visible
+        if Painel.Visible then selecionarAba(abaAtual) end
+    end
+end)
+
+Players.PlayerAdded:Connect(function()
+    if abaAtual == "jogadores" then popularJogadores() end
+end)
+Players.PlayerRemoving:Connect(function()
+    if abaAtual == "jogadores" then popularJogadores() end
+end)
+
+selecionarAba("ovos")
+
+print("========================================")
+print("[TKI] Painel v8 carregado!")
+print("[TKI] Noclip agora funciona montado no pet!")
+print("========================================")
